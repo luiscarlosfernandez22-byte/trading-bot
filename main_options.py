@@ -70,9 +70,13 @@ def get_stock_snapshot(symbol: str) -> dict:
 
 
 # ---------- Claude: directional read only, never a trade ----------
-DIRECTION_PROMPT = """You are a market analysis assistant. Given the data below, return \
-ONLY a JSON object, no other text:
-{"direction": "bullish" | "bearish" | "neutral", "confidence": <0.0-1.0>, "reasoning": "<one sentence>"}
+DIRECTION_PROMPT = """You are a market analysis assistant. Given the data below, respond with \
+valid, well-formed JSON only — proper quotes around every key and string value, a comma between \
+fields, no markdown code fences, no backticks, no text before or after the JSON object. \
+Exactly this shape:
+{"direction": "bullish", "confidence": 0.65, "reasoning": "one sentence"}
+
+direction must be exactly "bullish", "bearish", or "neutral". confidence is a number between 0.0 and 1.0.
 
 This feeds a system with its own independent contract selection and risk controls. \
 You are not selecting a contract or placing a trade — just giving a directional read."""
@@ -83,9 +87,14 @@ def get_direction_signal(snapshot: dict) -> dict:
         model="claude-sonnet-4-6",
         max_tokens=300,
         system=DIRECTION_PROMPT,
-        messages=[{"role": "user", "content": json.dumps(snapshot)}],
+        messages=[
+            {"role": "user", "content": json.dumps(snapshot)},
+            {"role": "assistant", "content": "{"},  # prefill forces raw JSON, no markdown fences
+        ],
     )
-    text = message.content[0].text.strip()
+    text = "{" + message.content[0].text.strip()
+    # Strip any code fences that slip through anyway
+    text = text.replace("```json", "").replace("```", "").strip()
     try:
         return json.loads(text)
     except json.JSONDecodeError:
